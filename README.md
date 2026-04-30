@@ -306,6 +306,7 @@ sudo nmcli device wifi connect "<SSID>" password "<password>"
 | AP non visibile | `nmcli con show --active` per vedere se TetraLab-AP è up; se no `sudo nmcli con up TetraLab-AP`; verifica `iw dev wlan0 info` |
 | AP+STA non funzionano insieme | il chip onboard forza stesso canale: la STA prevale, l'AP si sposta. Su WiFi USB esterno → niente vincolo |
 | Niente DHCP sull'AP | NetworkManager con `ipv4.method shared` richiede `nftables`/`iptables` ok; controlla `sudo nft list ruleset` |
+| Toggle AP dashboard: `Insufficient privileges` | manca regola polkit, rilancia `sudo ./setup.sh` (la installa) o crea manualmente `/etc/polkit-1/rules.d/50-tetralab-nmcli.rules` |
 
 ## Sviluppo locale (Mac/Linux senza hardware)
 

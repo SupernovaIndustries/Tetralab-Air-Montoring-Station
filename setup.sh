@@ -204,6 +204,25 @@ if getent group netdev >/dev/null && ! id -nG "${APP_USER}" | grep -qw netdev; t
   usermod -aG netdev "${APP_USER}" || warn "aggiunta a netdev fallita"
 fi
 
+# Polkit: la sola appartenenza a 'netdev' non basta per 'nmcli con modify'
+# (richiede org.freedesktop.NetworkManager.* admin auth). Installiamo una
+# regola che autorizza il gruppo netdev a tutte le azioni NM senza prompt.
+POLKIT_RULE=/etc/polkit-1/rules.d/50-tetralab-nmcli.rules
+DESIRED_RULE='polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") == 0 &&
+        subject.isInGroup("netdev")) {
+        return polkit.Result.YES;
+    }
+});'
+if [[ ! -f "${POLKIT_RULE}" ]] || ! diff -q <(echo "${DESIRED_RULE}") "${POLKIT_RULE}" >/dev/null 2>&1; then
+  info "Installo regola polkit ${POLKIT_RULE}..."
+  echo "${DESIRED_RULE}" > "${POLKIT_RULE}"
+  chmod 644 "${POLKIT_RULE}"
+  systemctl restart polkit 2>/dev/null || true
+else
+  info "Regola polkit gia' presente"
+fi
+
 # ---- 7) systemd unit ------------------------------------------------------
 info "Scrivo unit systemd in ${SERVICE_PATH}..."
 cat > "${SERVICE_PATH}" <<EOF
