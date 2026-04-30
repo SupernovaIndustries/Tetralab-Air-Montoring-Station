@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Login — {{ settings.device_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto">
+  <div class="card p-6">
+    <h2 class="text-xl font-semibold mb-2">Login</h2>
+    <p class="text-sm text-muted mb-4">
+      Inserisci il codice a 6 cifre del tuo authenticator.
+    </p>
+    <form method="POST" class="flex flex-col gap-3">
+      <input class="input text-2xl tracking-widest text-center font-mono"
+             style="letter-spacing:.4em"
+             type="text" name="code" inputmode="numeric" pattern="[0-9]*"
+             maxlength="6" placeholder="123456" required autofocus>
+      <button class="btn-primary" type="submit">Accedi</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

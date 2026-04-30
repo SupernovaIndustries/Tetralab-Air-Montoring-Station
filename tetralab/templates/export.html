@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Export — {{ settings.device_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <div class="card p-6">
+    <h2 class="text-xl font-semibold mb-2">Export dati</h2>
+    <p class="text-sm text-muted mb-4">
+      Scarica un file Excel con sheet separati per ogni livello di aggregazione
+      (1 min / oraria / 12 h / giornaliera) più una scheda con grafici embedded.
+    </p>
+
+    <div class="bg-bg rounded-lg p-4 border border-border mb-4">
+      <h3 class="text-sm text-muted mb-2">Records disponibili</h3>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+        <div><div class="text-muted text-xs">Minuto</div><div class="font-bold">{{ counts.minute }}</div></div>
+        <div><div class="text-muted text-xs">Ora</div><div class="font-bold">{{ counts.hour }}</div></div>
+        <div><div class="text-muted text-xs">12h</div><div class="font-bold">{{ counts.half }}</div></div>
+        <div><div class="text-muted text-xs">Giorno</div><div class="font-bold">{{ counts.day }}</div></div>
+      </div>
+    </div>
+
+    <h3 class="text-sm font-medium mb-2">Range temporale</h3>
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div>
+        <label class="text-xs text-muted">Da</label>
+        <input id="from" type="datetime-local" class="input w-full">
+      </div>
+      <div>
+        <label class="text-xs text-muted">A</label>
+        <input id="to" type="datetime-local" class="input w-full">
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-2 mb-4 text-xs">
+      <button class="btn-ghost py-1.5 text-xs" data-preset="24">ultime 24h</button>
+      <button class="btn-ghost py-1.5 text-xs" data-preset="168">ultimi 7gg</button>
+      <button class="btn-ghost py-1.5 text-xs" data-preset="720">ultimi 30gg</button>
+      <button class="btn-ghost py-1.5 text-xs" data-preset="0">tutto</button>
+    </div>
+
+    <button id="btnDownload" class="btn-primary w-full">Scarica .xlsx</button>
+  </div>
+</div>
+
+<script>
+function toLocalInput(d) {
+  const pad = n => String(n).padStart(2,'0');
+  return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+       + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+document.querySelectorAll('button[data-preset]').forEach(b => {
+  b.addEventListener('click', () => {
+    const h = parseInt(b.dataset.preset, 10);
+    const to = new Date();
+    if (h === 0) {
+      document.getElementById('from').value = '';
+      document.getElementById('to').value = '';
+    } else {
+      const from = new Date(Date.now() - h*3600*1000);
+      document.getElementById('from').value = toLocalInput(from);
+      document.getElementById('to').value   = toLocalInput(to);
+    }
+  });
+});
+
+document.getElementById('btnDownload').addEventListener('click', () => {
+  const fromS = document.getElementById('from').value;
+  const toS   = document.getElementById('to').value;
+  const params = new URLSearchParams();
+  if (fromS) params.set('from', String(Math.floor(new Date(fromS).getTime()/1000)));
+  if (toS)   params.set('to',   String(Math.floor(new Date(toS).getTime()/1000)));
+  location.href = '/api/export.xlsx' + (params.toString() ? '?' + params : '');
+});
+</script>
+{% endblock %}

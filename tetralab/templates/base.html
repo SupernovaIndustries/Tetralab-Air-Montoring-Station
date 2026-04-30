@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="it" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}{{ settings.device_name }}{% endblock %}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          bg:      '#0f1117',
+          surface: '#1e2130',
+          border:  '#2a2e42',
+          muted:   '#6b7280',
+          accent:  '#3b82f6',
+        },
+        fontFamily: {
+          sans: ['Inter', 'Segoe UI', 'system-ui', 'sans-serif'],
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body { background: #0f1117; color: #e8eaf0; }
+  .card { background: #1e2130; border: 1px solid #2a2e42; border-radius: 14px; }
+  .btn-primary { background:#3b82f6; color:#fff; padding:10px 18px; border-radius:8px; font-weight:500; }
+  .btn-primary:hover { background:#2563eb; }
+  .btn-primary:disabled { background:#374151; cursor:not-allowed; }
+  .btn-ghost { background:#2a2e42; color:#e8eaf0; padding:10px 18px; border-radius:8px; font-weight:500; }
+  .btn-ghost:hover { background:#363b54; }
+  .btn-danger { background:#dc2626; color:#fff; padding:10px 18px; border-radius:8px; font-weight:500; }
+  .btn-danger:hover { background:#b91c1c; }
+  .input { background:#0f1117; color:#e8eaf0; border:1px solid #2a2e42; border-radius:8px; padding:10px 14px; }
+  .input:focus { outline: none; border-color: #3b82f6; }
+  .badge-ok   { background: #064e3b; color: #6ee7b7; }
+  .badge-warn { background: #78350f; color: #fbbf24; }
+  .badge-err  { background: #7f1d1d; color: #fca5a5; }
+</style>
+{% block head_extra %}{% endblock %}
+</head>
+<body class="min-h-screen">
+<header class="border-b border-border">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+    <!-- LOGO PLACEHOLDER: sostituisci /static/logo.svg col tuo logo -->
+    <img src="{{ url_for('static', filename='logo.svg') }}" alt="logo" class="h-8 w-auto">
+    <h1 class="text-lg font-semibold tracking-wide">{{ settings.device_name }}</h1>
+    {% if session.get('authed') %}
+    <nav class="ml-auto flex items-center gap-1 text-sm">
+      <a href="{{ url_for('dashboard') }}" class="px-3 py-1 rounded hover:bg-surface {% if request.endpoint=='dashboard' %}bg-surface{% endif %}">Dashboard</a>
+      <a href="{{ url_for('export') }}"    class="px-3 py-1 rounded hover:bg-surface {% if request.endpoint=='export' %}bg-surface{% endif %}">Export</a>
+      <a href="{{ url_for('logout') }}"    class="px-3 py-1 rounded hover:bg-surface text-muted">Logout</a>
+    </nav>
+    {% endif %}
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="space-y-2 mb-4">
+        {% for cat, msg in messages %}
+          <div class="px-4 py-2 rounded text-sm
+            {% if cat == 'ok' %}badge-ok
+            {% elif cat == 'warn' %}badge-warn
+            {% else %}badge-err{% endif %}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="text-center text-xs text-muted py-6">
+  TetraLab Air Quality &middot; v1.0 &middot; tz: {{ settings.timezone_name }}
+</footer>
+
+{% block scripts_extra %}{% endblock %}
+</body>
+</html>

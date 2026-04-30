@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ settings.device_name }}{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<!-- Live -->
+<section>
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-semibold">Letture in tempo reale</h2>
+    <div class="text-xs text-muted">
+      <span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" id="liveDot"></span>
+      <span id="liveTs">connessione...</span>
+    </div>
+  </div>
+  <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+    <div class="card p-3 text-center"><div class="text-[10px] uppercase text-muted tracking-wider">PM 1.0</div><div class="text-2xl font-bold mt-1" id="vPm1">—</div><div class="text-[10px] text-muted">µg/m³</div></div>
+    <div class="card p-3 text-center"><div class="text-[10px] uppercase text-muted tracking-wider">PM 2.5</div><div class="text-2xl font-bold mt-1" id="vPm25">—</div><div class="text-[10px] text-muted">µg/m³</div></div>
+    <div class="card p-3 text-center"><div class="text-[10px] uppercase text-muted tracking-wider">PM 4.0</div><div class="text-2xl font-bold mt-1" id="vPm4">—</div><div class="text-[10px] text-muted">µg/m³</div></div>
+    <div class="card p-3 text-center"><div class="text-[10px] uppercase text-muted tracking-wider">PM 10</div><div class="text-2xl font-bold mt-1" id="vPm10">—</div><div class="text-[10px] text-muted">µg/m³</div></div>
+    <div class="card p-3 text-center"><div class="text-[10px] uppercase text-muted tracking-wider">Temp</div><div class="text-2xl font-bold mt-1" id="vTemp">—</div><div class="text-[10px] text-muted">°C</div></div>
+    <div class="card p-3 text-center"><div class="text-[10px] uppercase text-muted tracking-wider">Umidità</div><div class="text-2xl font-bold mt-1" id="vRh">—</div><div class="text-[10px] text-muted">%</div></div>
+    <div class="card p-3 text-center"><div class="text-[10px] uppercase text-muted tracking-wider">VOC</div><div class="text-2xl font-bold mt-1" id="vVoc">—</div><div class="text-[10px] text-muted">index</div></div>
+    <div class="card p-3 text-center"><div class="text-[10px] uppercase text-muted tracking-wider">NOx</div><div class="text-2xl font-bold mt-1" id="vNox">—</div><div class="text-[10px] text-muted">index</div></div>
+  </div>
+</section>
+
+<!-- Grafici -->
+<section class="mt-6">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+    <h2 class="text-lg font-semibold">Grafici</h2>
+    <div class="flex items-center gap-2 text-sm">
+      <label class="text-muted">Livello:</label>
+      <select id="selLevel" class="input py-1.5 text-sm">
+        <option value="hour" selected>Oraria</option>
+        <option value="minute">Al minuto</option>
+        <option value="half">12 ore</option>
+        <option value="day">Giornaliera</option>
+      </select>
+      <label class="text-muted ml-3">Range:</label>
+      <select id="selRange" class="input py-1.5 text-sm">
+        <option value="24">ultime 24 h</option>
+        <option value="72">ultime 72 h</option>
+        <option value="168" selected>ultimi 7 giorni</option>
+        <option value="720">ultimi 30 giorni</option>
+        <option value="0">tutto</option>
+      </select>
+      <button id="btnRefresh" class="btn-ghost py-1.5 text-sm">Aggiorna</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="card p-4"><h3 class="text-sm text-muted mb-2">Particolato (PM)</h3><canvas id="chPm"  height="160"></canvas></div>
+    <div class="card p-4"><h3 class="text-sm text-muted mb-2">Temperatura / Umidità</h3><canvas id="chTh"  height="160"></canvas></div>
+    <div class="card p-4"><h3 class="text-sm text-muted mb-2">VOC Index</h3><canvas id="chVoc" height="160"></canvas></div>
+    <div class="card p-4"><h3 class="text-sm text-muted mb-2">NOx Index</h3><canvas id="chNox" height="160"></canvas></div>
+  </div>
+</section>
+
+<!-- Info / azioni -->
+<section class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+  <div class="card p-4 col-span-2">
+    <h3 class="text-sm text-muted mb-2">Stato sistema</h3>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+      <div><div class="text-muted text-xs">Records minuto</div><div class="font-bold" id="iCntMin">—</div></div>
+      <div><div class="text-muted text-xs">Records ora</div><div class="font-bold" id="iCntHour">—</div></div>
+      <div><div class="text-muted text-xs">DB size</div><div class="font-bold" id="iDbSize">—</div></div>
+      <div><div class="text-muted text-xs">TZ</div><div class="font-bold">{{ settings.timezone_name }}</div></div>
+    </div>
+  </div>
+  <div class="card p-4">
+    <h3 class="text-sm text-muted mb-2">Azioni</h3>
+    <div class="flex flex-col gap-2">
+      <a href="{{ url_for('export') }}" class="btn-primary text-center">Vai a Export Excel</a>
+      <button id="btnReset2fa" class="btn-danger">Reset autenticatore</button>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+const CHART_COLORS = {
+  pm1:  '#60a5fa', pm25: '#a78bfa', pm4: '#f472b6', pm10: '#f59e0b',
+  temp: '#ef4444', rh:   '#22d3ee', voc: '#34d399', nox: '#facc15',
+};
+
+const fmt = (v, d=1) => (v == null || isNaN(v)) ? '—' : Number(v).toFixed(d);
+
+// Dynamic last-update for live values
+async function pollLive() {
+  try {
+    const r = await fetch('/api/live');
+    if (!r.ok) throw new Error('http ' + r.status);
+    const d = await r.json();
+    const v = d.values || {};
+    document.getElementById('vPm1').textContent  = fmt(v.pm1);
+    document.getElementById('vPm25').textContent = fmt(v.pm25);
+    document.getElementById('vPm4').textContent  = fmt(v.pm4);
+    document.getElementById('vPm10').textContent = fmt(v.pm10);
+    document.getElementById('vTemp').textContent = fmt(v.temp, 2);
+    document.getElementById('vRh').textContent   = fmt(v.rh);
+    document.getElementById('vVoc').textContent  = fmt(v.voc, 0);
+    document.getElementById('vNox').textContent  = fmt(v.nox, 0);
+    document.getElementById('liveDot').className = 'inline-block w-2 h-2 rounded-full bg-green-500 mr-1';
+    if (d.ts) {
+      document.getElementById('liveTs').textContent =
+        'aggiornato ' + new Date(d.ts*1000).toLocaleTimeString() +
+        ' · ' + d.samples_total + ' campioni totali';
+    }
+  } catch (e) {
+    document.getElementById('liveDot').className = 'inline-block w-2 h-2 rounded-full bg-red-500 mr-1';
+    document.getElementById('liveTs').textContent = 'errore: ' + e.message;
+  }
+}
+
+let charts = {};
+function makeChart(id, datasets) {
+  const ctx = document.getElementById(id).getContext('2d');
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#94a3b8', boxWidth: 12, font: { size: 11 } } },
+        tooltip: { backgroundColor: '#1e2130', borderColor: '#2a2e42', borderWidth: 1 }
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: { tooltipFormat: 'yyyy-MM-dd HH:mm' },
+          ticks: { color: '#6b7280', maxRotation: 0 },
+          grid:  { color: '#2a2e42' },
+        },
+        y: {
+          ticks: { color: '#6b7280' },
+          grid:  { color: '#2a2e42' },
+        }
+      }
+    }
+  });
+}
+
+function ds(label, color, points) {
+  return {
+    label, borderColor: color, backgroundColor: color + '33',
+    pointRadius: 0, borderWidth: 2, data: points, tension: 0.2, spanGaps: true,
+  };
+}
+
+async function loadCharts() {
+  const level = document.getElementById('selLevel').value;
+  const rangeH = parseInt(document.getElementById('selRange').value, 10);
+  const params = new URLSearchParams({ level });
+  if (rangeH > 0) params.set('from', String(Math.floor(Date.now()/1000) - rangeH*3600));
+  const r = await fetch('/api/data?' + params);
+  if (!r.ok) { console.error('data fail', r.status); return; }
+  const d = await r.json();
+  const rows = d.rows || [];
+  const pts = (key) => rows.map(r => ({ x: r.ts*1000, y: r[key] }));
+
+  makeChart('chPm', [
+    ds('PM 1.0',  CHART_COLORS.pm1,  pts('pm1')),
+    ds('PM 2.5',  CHART_COLORS.pm25, pts('pm25')),
+    ds('PM 4.0',  CHART_COLORS.pm4,  pts('pm4')),
+    ds('PM 10',   CHART_COLORS.pm10, pts('pm10')),
+  ]);
+  makeChart('chTh', [
+    ds('Temp °C', CHART_COLORS.temp, pts('temp')),
+    ds('RH %',    CHART_COLORS.rh,   pts('rh')),
+  ]);
+  makeChart('chVoc', [ ds('VOC index', CHART_COLORS.voc, pts('voc')) ]);
+  makeChart('chNox', [ ds('NOx index', CHART_COLORS.nox, pts('nox')) ]);
+}
+
+async function loadInfo() {
+  try {
+    const r = await fetch('/api/info');
+    const d = await r.json();
+    document.getElementById('iCntMin').textContent  = d.counts.minute;
+    document.getElementById('iCntHour').textContent = d.counts.hour;
+    document.getElementById('iDbSize').textContent  =
+      (d.db_bytes / 1024 / 1024).toFixed(2) + ' MB';
+  } catch (e) { console.error(e); }
+}
+
+async function reset2fa() {
+  if (!confirm('Resettare l\'autenticatore? Dovrai riscansionare il QR.')) return;
+  const r = await fetch('/api/reset_2fa', { method: 'POST' });
+  if (r.ok) location.href = '/setup_2fa';
+}
+
+document.getElementById('btnRefresh').addEventListener('click', loadCharts);
+document.getElementById('selLevel').addEventListener('change', loadCharts);
+document.getElementById('selRange').addEventListener('change', loadCharts);
+document.getElementById('btnReset2fa').addEventListener('click', reset2fa);
+
+pollLive(); setInterval(pollLive, 2000);
+loadCharts();
+loadInfo(); setInterval(loadInfo, 30000);
+</script>
+{% endblock %}
