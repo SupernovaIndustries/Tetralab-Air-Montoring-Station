@@ -2,9 +2,17 @@
 <html lang="it" class="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TetraLab AQ">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='logo.svg') }}">
+<link rel="icon" href="{{ url_for('static', filename='logo.svg') }}">
 <title>{% block title %}{{ settings.device_name }}{% endblock %}</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<script src="{{ url_for('static', filename='vendor/tailwind.min.js') }}"></script>
 <script>
   tailwind.config = {
     darkMode: 'class',
@@ -17,48 +25,80 @@
           muted:   '#6b7280',
           accent:  '#3b82f6',
         },
-        fontFamily: {
-          sans: ['Inter', 'Segoe UI', 'system-ui', 'sans-serif'],
-        }
+        fontFamily: { sans: ['Inter', 'Segoe UI', 'system-ui', 'sans-serif'] }
       }
     }
   }
 </script>
 <style>
-  body { background: #0f1117; color: #e8eaf0; }
+  html, body { background: #0f1117; color: #e8eaf0; -webkit-tap-highlight-color: transparent; }
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
   .card { background: #1e2130; border: 1px solid #2a2e42; border-radius: 14px; }
-  .btn-primary { background:#3b82f6; color:#fff; padding:10px 18px; border-radius:8px; font-weight:500; }
-  .btn-primary:hover { background:#2563eb; }
+  .btn-primary { background:#3b82f6; color:#fff; padding:11px 18px; border-radius:10px; font-weight:500; min-height:44px; }
+  .btn-primary:hover, .btn-primary:active { background:#2563eb; }
   .btn-primary:disabled { background:#374151; cursor:not-allowed; }
-  .btn-ghost { background:#2a2e42; color:#e8eaf0; padding:10px 18px; border-radius:8px; font-weight:500; }
-  .btn-ghost:hover { background:#363b54; }
-  .btn-danger { background:#dc2626; color:#fff; padding:10px 18px; border-radius:8px; font-weight:500; }
-  .btn-danger:hover { background:#b91c1c; }
-  .input { background:#0f1117; color:#e8eaf0; border:1px solid #2a2e42; border-radius:8px; padding:10px 14px; }
+  .btn-ghost { background:#2a2e42; color:#e8eaf0; padding:11px 18px; border-radius:10px; font-weight:500; min-height:44px; }
+  .btn-ghost:hover, .btn-ghost:active { background:#363b54; }
+  .btn-danger { background:#dc2626; color:#fff; padding:11px 18px; border-radius:10px; font-weight:500; min-height:44px; }
+  .btn-danger:hover, .btn-danger:active { background:#b91c1c; }
+  .input { background:#0f1117; color:#e8eaf0; border:1px solid #2a2e42; border-radius:10px; padding:12px 14px; min-height:44px; -webkit-appearance: none; }
   .input:focus { outline: none; border-color: #3b82f6; }
   .badge-ok   { background: #064e3b; color: #6ee7b7; }
   .badge-warn { background: #78350f; color: #fbbf24; }
   .badge-err  { background: #7f1d1d; color: #fca5a5; }
+
+  /* Bottom nav (mobile only) */
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #161826; border-top: 1px solid #2a2e42;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 4px);
+    z-index: 50;
+  }
+  .bottom-nav-item {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    flex: 1; padding: 8px 4px; color: #6b7280; font-size: 10px; gap: 2px;
+    text-decoration: none;
+  }
+  .bottom-nav-item.active { color: #3b82f6; }
+  .bottom-nav-item svg { width: 22px; height: 22px; }
+
+  /* Quando bottom nav e' visibile, lascia spazio in fondo */
+  @media (max-width: 767px) {
+    main { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  }
+
+  /* Tap feedback */
+  button, a.btn-primary, a.btn-ghost, .bottom-nav-item { transition: opacity .15s, background-color .2s; }
+  button:active, a.btn-primary:active, a.btn-ghost:active { opacity: .7; }
 </style>
 {% block head_extra %}{% endblock %}
 </head>
-<body class="min-h-screen">
-<header class="border-b border-border">
-  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-    <!-- LOGO PLACEHOLDER: sostituisci /static/logo.svg col tuo logo -->
+<body class="min-h-screen font-sans">
+
+<header class="sticky top-0 z-40 bg-bg/95 backdrop-blur border-b border-border">
+  <div class="max-w-6xl mx-auto px-4 py-2.5 flex items-center gap-3">
     <img src="{{ url_for('static', filename='logo.svg') }}" alt="logo" class="h-8 w-auto">
-    <h1 class="text-lg font-semibold tracking-wide">{{ settings.device_name }}</h1>
+    <h1 class="text-base md:text-lg font-semibold tracking-wide">{{ settings.device_name }}</h1>
+
     {% if session.get('authed') %}
-    <nav class="ml-auto flex items-center gap-1 text-sm">
-      <a href="{{ url_for('dashboard') }}" class="px-3 py-1 rounded hover:bg-surface {% if request.endpoint=='dashboard' %}bg-surface{% endif %}">Dashboard</a>
-      <a href="{{ url_for('export') }}"    class="px-3 py-1 rounded hover:bg-surface {% if request.endpoint=='export' %}bg-surface{% endif %}">Export</a>
-      <a href="{{ url_for('logout') }}"    class="px-3 py-1 rounded hover:bg-surface text-muted">Logout</a>
+    <!-- Desktop nav (md+) -->
+    <nav class="ml-auto hidden md:flex items-center gap-1 text-sm">
+      <a href="{{ url_for('dashboard') }}" class="px-3 py-1.5 rounded hover:bg-surface {% if request.endpoint=='dashboard' %}bg-surface{% endif %}">Dashboard</a>
+      <a href="{{ url_for('export') }}"    class="px-3 py-1.5 rounded hover:bg-surface {% if request.endpoint=='export' %}bg-surface{% endif %}">Export</a>
+      <a href="{{ url_for('logout') }}"    class="px-3 py-1.5 rounded hover:bg-surface text-muted">Logout</a>
     </nav>
+    <!-- Mobile: solo logout (le altre vanno nel bottom nav) -->
+    <a href="{{ url_for('logout') }}" class="ml-auto md:hidden text-xs text-muted px-2 py-1">Logout</a>
     {% endif %}
   </div>
 </header>
 
-<main class="max-w-6xl mx-auto px-4 py-6">
+<main class="max-w-6xl mx-auto px-4 py-4 md:py-6">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="space-y-2 mb-4">
@@ -75,7 +115,25 @@
   {% block content %}{% endblock %}
 </main>
 
-<footer class="text-center text-xs text-muted py-6">
+{% if session.get('authed') %}
+<!-- Bottom nav: solo mobile -->
+<nav class="bottom-nav md:hidden flex">
+  <a href="{{ url_for('dashboard') }}" class="bottom-nav-item {% if request.endpoint=='dashboard' %}active{% endif %}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l2-2 7-7 7 7 2 2v9a2 2 0 0 1-2 2h-4v-7H10v7H6a2 2 0 0 1-2-2v-9z"/></svg>
+    <span>Live</span>
+  </a>
+  <a href="{{ url_for('dashboard') }}#tabFiles" class="bottom-nav-item">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18M9 3v18M15 3v18M21 3v18M3 8h18M3 16h18"/></svg>
+    <span>Grafici</span>
+  </a>
+  <a href="{{ url_for('export') }}" class="bottom-nav-item {% if request.endpoint=='export' %}active{% endif %}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+    <span>Export</span>
+  </a>
+</nav>
+{% endif %}
+
+<footer class="text-center text-xs text-muted py-4 md:py-6 hidden md:block">
   TetraLab Air Quality &middot; v1.0 &middot; tz: {{ settings.timezone_name }}
 </footer>
 

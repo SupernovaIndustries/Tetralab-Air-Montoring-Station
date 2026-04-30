@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+{% block head_extra %}
+<!-- Niente script extra: il QR e' generato server-side con qrcode Python -->
+{% endblock %}
 {% block title %}Setup autenticatore — {{ settings.device_name }}{% endblock %}
 
 {% block content %}
