@@ -131,6 +131,49 @@ Se manca, **rilancia `sudo ./setup.sh`** (è idempotente — non rovina nulla, r
 | Curl da Pi `127.0.0.1:5000` ok ma da PC no | problema rete o firewall | sei sulla stessa rete? Controlla `ufw`, controlla che il router non isoli i client |
 | Pagina si apre poi 500 | crash a runtime, vedi log | `sudo journalctl -u tetralab -n 200` |
 | `/dev/i2c-4` non esiste | dtoverlay non applicato | controlla config.txt, **reboot** |
+| **`Unable to locate executable .venv/bin/python`** | venv non creato o corrotto | vedi sezione "Fix venv mancante" sotto |
+| **AP attivo → STA si disconnette** | limite hardware Pi onboard | vedi sezione "AP+STA: limiti e workaround" sotto |
+
+### Fix venv mancante / corrotto
+
+Se il service va in restart loop con errore `.venv/bin/python: No such file or directory`:
+
+```bash
+cd ~/<cartella-progetto>
+sudo apt install -y python3-venv python3-pip python3-dev build-essential libffi-dev libssl-dev
+rm -rf .venv
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip wheel
+.venv/bin/pip install -r requirements.txt
+sudo systemctl restart tetralab
+sudo systemctl status tetralab
+```
+
+### AP+STA: limiti e workaround
+
+Il chip WiFi onboard della Pi 4/5 (Cypress CYW43xxx) supporta AP+STA **simultaneo ma sullo stesso canale**. Se la STA è connessa a un router su canale 11 e l'AP è su canale 6 (o viceversa), una delle due cade.
+
+**Comportamento attuale del setup**:
+- AP **non forza canale** (delega al firmware)
+- AP ha `autoconnect-priority=1` (basso) → STA preferita quando entrambe disponibili
+- In casa/ufficio: STA prevale, AP può scendere
+- In Bologna (no WiFi locale): AP unico modo → sempre attivo, sempre raggiungibile
+
+**Per testare a casa con AP attivo** (sacrifichi internet sulla Pi durante il test):
+```bash
+sudo nmcli con down "<nome-rete-wifi-casa>"
+sudo nmcli con up TetraLab-AP
+# poi connettiti col telefono a 'TetraLab-AQ' / pwd 'tetralab2026'
+# vai su http://192.168.50.1:5000
+```
+
+**Per riportare la Pi su WiFi di casa**:
+```bash
+sudo nmcli con down TetraLab-AP
+sudo nmcli con up "<nome-rete-wifi-casa>"
+```
+
+**Soluzione hardware definitiva** (futura): aggiungere un dongle WiFi USB → onboard fa STA, dongle fa AP, niente conflitto canale.
 
 ## Accesso alla webapp
 
@@ -144,7 +187,9 @@ http://raspberrypi.local:5000/   (se mDNS funziona)
 ```
 
 ### 📡 Via Access Point integrato
-La centralina **emette sempre** una propria rete WiFi alla quale connettersi direttamente — utile in postazioni remote senza WiFi (es. Bologna).
+La centralina può emettere una propria rete WiFi — utile in postazioni remote senza WiFi (es. Bologna).
+
+**Il setup crea il profilo AP ma lo lascia SPENTO**, così durante i test la STA WiFi non viene disturbata. Lo accendi quando ti serve dal **pulsante in Dashboard → Azioni → Access Point**, oppure via `sudo nmcli con up TetraLab-AP`. Lo stato (acceso/spento + autoconnect al boot) **persiste tra i reboot**: se l'ultima volta era acceso, all'avvio della Pi torna acceso da solo.
 
 | Parametro | Default | Override |
 |---|---|---|

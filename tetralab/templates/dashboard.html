@@ -75,6 +75,19 @@
     <h3 class="text-sm text-muted mb-2">Azioni</h3>
     <div class="flex flex-col gap-2">
       <a href="{{ url_for('export') }}" class="btn-primary text-center">Vai a Export Excel</a>
+
+      <!-- AP toggle -->
+      <div class="p-2 bg-bg rounded border border-border">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-sm">
+            <div class="font-medium">Access Point</div>
+            <div class="text-xs text-muted" id="apStatus">caricamento...</div>
+          </div>
+          <button id="btnApToggle" class="btn-ghost text-xs py-1.5 px-3" disabled>…</button>
+        </div>
+        <div class="text-[10px] text-muted mt-1" id="apMeta"></div>
+      </div>
+
       <button id="btnReset2fa" class="btn-danger">Reset autenticatore</button>
     </div>
   </div>
@@ -198,13 +211,78 @@ async function reset2fa() {
   if (r.ok) location.href = '/setup_2fa';
 }
 
+// ---------- AP toggle ----------
+async function loadApState() {
+  const status = document.getElementById('apStatus');
+  const meta   = document.getElementById('apMeta');
+  const btn    = document.getElementById('btnApToggle');
+  try {
+    const r = await fetch('/api/ap');
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'errore');
+    if (!d.profile_exists) {
+      status.textContent = 'profilo non configurato';
+      meta.textContent = 'lancia setup.sh per crearlo';
+      btn.disabled = true;
+      btn.textContent = '—';
+      btn.className = 'btn-ghost text-xs py-1.5 px-3';
+      btn.dataset.state = '0';
+      return;
+    }
+    const a  = d.active;
+    const ac = d.autoconnect;
+    status.innerHTML = a
+      ? '<span class="text-green-400">●</span> attivo'
+      : '<span class="text-muted">○</span> spento';
+    meta.textContent =
+      (d.ssid ? 'SSID ' + d.ssid + (d.ip ? ' · IP ' + d.ip : '') + ' · ' : '') +
+      (ac ? 'auto-on al boot' : 'auto-off al boot');
+    btn.disabled  = false;
+    btn.textContent = a ? 'Disattiva AP' : 'Attiva AP';
+    btn.className = a
+      ? 'btn-danger text-xs py-1.5 px-3'
+      : 'btn-primary text-xs py-1.5 px-3';
+    btn.dataset.state = a ? '1' : '0';
+  } catch (e) {
+    status.textContent = 'errore: ' + e.message;
+    meta.textContent = '';
+    btn.disabled = true;
+  }
+}
+
+async function toggleAp() {
+  const btn = document.getElementById('btnApToggle');
+  const wasActive = btn.dataset.state === '1';
+  const msg = wasActive
+    ? 'Disattivare l\'AP?\n\nSe sei connesso via AP perderai la connessione e dovrai accedere via WiFi locale.'
+    : 'Attivare l\'AP?\n\nSe la Pi è connessa al WiFi locale, la connessione potrebbe interrompersi (limite hardware AP+STA su stesso canale).';
+  if (!confirm(msg)) return;
+  btn.disabled = true;
+  btn.textContent = wasActive ? 'spengo...' : 'accendo...';
+  try {
+    const r = await fetch('/api/ap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enable: !wasActive }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'errore');
+    setTimeout(loadApState, 1500);
+  } catch (e) {
+    alert('Toggle AP fallito: ' + e.message);
+    loadApState();
+  }
+}
+
 document.getElementById('btnRefresh').addEventListener('click', loadCharts);
 document.getElementById('selLevel').addEventListener('change', loadCharts);
 document.getElementById('selRange').addEventListener('change', loadCharts);
 document.getElementById('btnReset2fa').addEventListener('click', reset2fa);
+document.getElementById('btnApToggle').addEventListener('click', toggleAp);
 
 pollLive(); setInterval(pollLive, 2000);
 loadCharts();
 loadInfo(); setInterval(loadInfo, 30000);
+loadApState(); setInterval(loadApState, 30000);
 </script>
 {% endblock %}

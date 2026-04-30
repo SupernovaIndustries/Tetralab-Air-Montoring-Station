@@ -30,6 +30,7 @@ from .aggregator import Aggregator
 from .auth import AuthManager
 from .config import Settings
 from .exporter import build_xlsx
+from .network import NetworkError, disable_ap, enable_ap, get_ap_state
 from .storage import METRICS, Storage
 
 log = logging.getLogger(__name__)
@@ -202,6 +203,28 @@ def create_app(*, settings: Settings, storage: Storage, aggregator: Aggregator) 
         auth.reset_provisioning()
         session.clear()
         return jsonify({"ok": True})
+
+    # ----- AP toggle -----
+    @app.route("/api/ap", methods=["GET"])
+    @_provisioning_required
+    @_login_required
+    def api_ap_get():
+        try:
+            return jsonify({"ok": True, **get_ap_state().to_dict()})
+        except NetworkError as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.route("/api/ap", methods=["POST"])
+    @_provisioning_required
+    @_login_required
+    def api_ap_set():
+        payload = request.get_json(silent=True) or {}
+        enable = bool(payload.get("enable", True))
+        try:
+            new_state = enable_ap() if enable else disable_ap()
+            return jsonify({"ok": True, **new_state.to_dict()})
+        except NetworkError as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
 
     # ---------- error handlers ----------
     @app.errorhandler(404)

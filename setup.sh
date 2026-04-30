@@ -147,11 +147,15 @@ else
   warn "i2cdetect non disponibile — salto"
 fi
 
-# ---- 6) Access Point WiFi (sempre attivo, coesiste con STA) ---------------
-# La Pi 4/5 onboard CYW43xxx supporta AP+STA simultaneo (vincolo: stesso canale).
-# Se NetworkManager non c'e' (raro su Bookworm) si salta — fai a mano con hostapd.
+# ---- 6) Access Point WiFi (creato ma SPENTO di default) -------------------
+# Il profilo NM viene creato ma con autoconnect=no e NON viene avviato.
+# L'utente lo attiva/disattiva dal pulsante in dashboard (o via nmcli).
+# Lo stato (autoconnect yes/no) persiste al reboot grazie a NetworkManager.
+#
+# Nota hardware: su Pi onboard CYW43xxx, AP+STA simultaneo va sullo stesso
+# canale -> attivare AP mentre la STA e' connessa puo' interrompere la STA.
 if command -v nmcli >/dev/null 2>&1; then
-  info "Configuro Access Point WiFi via NetworkManager..."
+  info "Configuro profilo Access Point WiFi (creato spento)..."
   if nmcli -t -f NAME connection show | grep -qx "TetraLab-AP"; then
     info "  profilo 'TetraLab-AP' gia' presente, aggiorno parametri"
   else
@@ -159,25 +163,31 @@ if command -v nmcli >/dev/null 2>&1; then
       con-name TetraLab-AP ssid "${AP_SSID}" \
       || warn "creazione profilo AP fallita"
   fi
+  # autoconnect=no di default -> AP NON parte al boot finche' l'utente non
+  # lo abilita dal pulsante in dashboard (che setta autoconnect=yes).
   nmcli con modify TetraLab-AP \
-    802-11-wireless.band bg \
-    802-11-wireless.channel 6 \
     802-11-wireless-security.key-mgmt wpa-psk \
     802-11-wireless-security.psk "${AP_PASS}" \
     ipv4.method shared \
     ipv4.addresses "${AP_IP_CIDR}" \
-    connection.autoconnect yes \
-    connection.autoconnect-priority 50 \
+    connection.autoconnect no \
+    connection.autoconnect-priority 1 \
     || warn "modifica profilo AP fallita"
 
-  info "Avvio AP..."
-  nmcli con up TetraLab-AP || warn "non riesco ad avviare l'AP ora (riprovera' al reboot)"
-
   AP_IP_BARE="${AP_IP_CIDR%/*}"
-  info "  AP attivo: SSID='${AP_SSID}'  pass='${AP_PASS}'  IP=${AP_IP_BARE}"
+  info "  AP profilo creato: SSID='${AP_SSID}'  pass='${AP_PASS}'  IP=${AP_IP_BARE}"
+  info "  AP NON attivo. Attivalo dal pulsante in dashboard, oppure:"
+  info "    sudo nmcli con up TetraLab-AP"
 else
   warn "nmcli non disponibile — Access Point NON configurato."
   warn "Installa NetworkManager o configura hostapd manualmente."
+fi
+
+# Aggiungi utente al gruppo netdev per controllare nmcli senza sudo
+# (necessario perche' la webapp deve poter chiamare 'nmcli con up/down/modify')
+if getent group netdev >/dev/null && ! id -nG "${APP_USER}" | grep -qw netdev; then
+  info "Aggiungo ${APP_USER} al gruppo netdev (per nmcli senza sudo)..."
+  usermod -aG netdev "${APP_USER}" || warn "aggiunta a netdev fallita"
 fi
 
 # ---- 7) systemd unit ------------------------------------------------------
@@ -228,10 +238,12 @@ echo "  ── Connessione via rete WiFi locale (STA): ────────�
 echo "  Webapp:    http://${IP_LAN:-<ip-raspberry>}:${PORT}/"
 echo "  Hostname:  http://$(hostname).local:${PORT}/"
 echo
-echo "  ── Connessione via Access Point della centralina: ───────────────"
+echo "  ── Access Point (creato spento, attivalo da dashboard): ────────"
 echo "  WiFi SSID: ${AP_SSID}"
 echo "  Password:  ${AP_PASS}"
-echo "  Webapp:    http://${AP_IP_BARE}:${PORT}/"
+echo "  IP:        ${AP_IP_BARE}:${PORT}  (quando attivo)"
+echo "  On/Off:    pulsante in dashboard, oppure:"
+echo "             sudo nmcli con up TetraLab-AP   |   sudo nmcli con down TetraLab-AP"
 echo
 echo "  ── Manutenzione: ────────────────────────────────────────────────"
 echo "  Logs:      sudo journalctl -u ${SERVICE_NAME} -f"
