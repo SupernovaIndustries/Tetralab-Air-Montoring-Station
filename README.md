@@ -9,6 +9,9 @@ Datalogger qualità aria con **Sensirion SEN65** su **Raspberry Pi**, webapp Fla
   - SCL → **GPIO 9**
   - SEL → **GPIO 27** (output LOW al boot, modalità I2C del SEN65)
   - VDD → 3V3, GND → GND
+  - **Pull-up esterni 10kΩ** su SDA e SCL a 3V3 (raccomandato dal datasheet SEN65)
+    - I pull-up interni della Pi (~50kΩ) sono attivati via `gpio=8,9=ip,pu` come safety-net,
+      ma con cavi >10cm o disturbi elettrici servono quelli esterni
 - Storage: **128 GB onboard** della scheda custom
 - Cellular SIMCOM 7600G — *integrazione prevista in seconda fase (UART su PCIe)*
 

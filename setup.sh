@@ -106,6 +106,19 @@ if [[ -n "${CONFIG_TXT}" ]]; then
   else
     info "  gpio=27=op,dl gia' presente"
   fi
+
+  # Pull-up interni su GPIO 8/9 (~50kOhm). Il default su Pi e':
+  #   GPIO 8 = pull-up debole (ok)
+  #   GPIO 9 = pull-DOWN (opposto di quello che serve a I2C!)
+  # Lo forziamo esplicitamente. NB: idealmente metti anche 10k esterni a 3V3
+  # come raccomanda il datasheet SEN65.
+  if ! grep -qE "^[[:space:]]*gpio=8,9=ip,pu" "${CONFIG_TXT}"; then
+    echo 'gpio=8,9=ip,pu' >> "${CONFIG_TXT}"
+    info "  aggiunto: gpio=8,9=ip,pu  (pull-up interni I2C, ~50kOhm)"
+    REBOOT_NEEDED=1
+  else
+    info "  gpio=8,9=ip,pu gia' presente"
+  fi
 else
   warn "config.txt non trovato in /boot o /boot/firmware — applica manualmente:"
   warn "  dtoverlay=i2c-gpio,bus=4,i2c_gpio_sda=8,i2c_gpio_scl=9"
