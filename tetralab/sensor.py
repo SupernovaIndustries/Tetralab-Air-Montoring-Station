@@ -14,10 +14,11 @@ from typing import Optional
 
 
 # --- Codici comando SEN65 (16-bit, big endian) ---
+# Verificati contro Sensirion_I2C_SEN65 Arduino library 1.0.0
 CMD_START_MEASUREMENT     = 0x0021
 CMD_STOP_MEASUREMENT      = 0x0104
 CMD_READ_DATA_READY       = 0x0202
-CMD_READ_MEASURED_VALUES  = 0x0471   # 8 valori per SEN65
+CMD_READ_MEASURED_VALUES  = 0x0446   # 8 valori per SEN65 (PM x4, RH, T, VOC, NOx)
 CMD_GET_SERIAL_NUMBER     = 0xD033
 CMD_DEVICE_RESET          = 0xD304
 
