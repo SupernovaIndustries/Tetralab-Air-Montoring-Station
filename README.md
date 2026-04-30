@@ -5,7 +5,7 @@ Datalogger qualità aria con **Sensirion SEN65** su **Raspberry Pi**, webapp Fla
 ## Hardware previsto
 - Raspberry Pi 4/5 (o CM4) con scheda custom
 - Sensirion **SEN65** via connettore custom su:
-  - SDA → **GPIO 8**  (bus I2C-4 hardware via `dtoverlay=i2c4,pins_8_9`)
+  - SDA → **GPIO 8**  (bus I2C software via `dtoverlay=i2c-gpio,bus=4,i2c_gpio_sda=8,i2c_gpio_scl=9`)
   - SCL → **GPIO 9**
   - SEL → **GPIO 27** (output LOW al boot, modalità I2C del SEN65)
   - VDD → 3V3, GND → GND
@@ -22,7 +22,7 @@ sudo ./setup.sh
 
 Lo script:
 1. Aggiorna apt + installa python3, venv, build tools, `i2c-tools`, `sqlite3`
-2. Configura `config.txt` con `dtoverlay=i2c4,pins_8_9` + `gpio=27=op,dl` (SEL→LOW)
+2. Configura `config.txt` con `dtoverlay=i2c-gpio,bus=4,...` + `gpio=27=op,dl` (SEL→LOW)
 3. Abilita anche I2C-1 standard (per debug/futuro)
 4. Aggiunge l'utente al gruppo `i2c`
 5. Crea `/var/lib/tetralab` per i dati persistenti
@@ -47,7 +47,7 @@ Tutti i parametri principali via **variabili d'ambiente** (settate in `tetralab.
 | `TETRALAB_TZ`       | `Europe/Rome` | timezone per allineare aggregazioni |
 | `TETRALAB_I2C_BUS`  | `4` (impostato dal service) | bus I2C: `4` con i2c4 hardware su GPIO 8/9 |
 | `TETRALAB_LOG_LEVEL`| `INFO` | DEBUG/INFO/WARNING |
-| `TETRALAB_ALLOW_SIMULATOR` | `1` | se 1, usa fake sensor se SEN65 manca |
+| `TETRALAB_ALLOW_SIMULATOR` | `0` (off) | se `1`, usa fake sensor se SEN65 manca (utile solo per dev su Mac) |
 | `TETRALAB_AP_SSID`  | `TetraLab-AQ` | SSID dell'access point integrato |
 | `TETRALAB_AP_PASS`  | `tetralab2026` | password AP (min 8 char, **da cambiare!**) |
 | `TETRALAB_AP_IP`    | `192.168.50.1/24` | IP/subnet dell'AP |
@@ -315,9 +315,14 @@ cd tetralab_air_quality_pi
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-TETRALAB_DATA_DIR=./data TETRALAB_TZ=Europe/Rome python run.py
+TETRALAB_DATA_DIR=./data \
+TETRALAB_TZ=Europe/Rome \
+TETRALAB_ALLOW_SIMULATOR=1 \
+python run.py
 # poi apri http://localhost:5000
 ```
+
+> Senza `TETRALAB_ALLOW_SIMULATOR=1` e senza SEN65 collegato, il servizio entra in retry loop infinito sul sensore (atteso). Imposta a 1 solo per dev su Mac.
 
 ## Roadmap
 

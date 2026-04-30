@@ -9,6 +9,9 @@
 {% block content %}
 <!-- Live -->
 <section>
+  <div id="simBanner" class="hidden mb-3 px-4 py-3 rounded-lg bg-yellow-900/40 border border-yellow-600/50 text-yellow-200 text-sm">
+    ⚠️ <b>MODALITÀ SIMULATORE ATTIVA</b> — il SEN65 non risponde sul bus I2C, i valori mostrati sono <b>generati artificialmente</b>. Controlla cablaggio, GPIO27 (SEL→LOW), <code>i2cdetect -y 4</code>.
+  </div>
   <div class="flex items-center justify-between mb-3">
     <h2 class="text-lg font-semibold">Letture in tempo reale</h2>
     <div class="text-xs text-muted">
@@ -119,9 +122,12 @@ async function pollLive() {
     document.getElementById('vRh').textContent   = fmt(v.rh);
     document.getElementById('vVoc').textContent  = fmt(v.voc, 0);
     document.getElementById('vNox').textContent  = fmt(v.nox, 0);
-    document.getElementById('liveDot').className = 'inline-block w-2 h-2 rounded-full bg-green-500 mr-1';
+    document.getElementById('liveDot').className =
+      'inline-block w-2 h-2 rounded-full mr-1 ' + (d.simulated ? 'bg-yellow-400' : 'bg-green-500');
+    document.getElementById('simBanner').classList.toggle('hidden', !d.simulated);
     if (d.ts) {
       document.getElementById('liveTs').textContent =
+        (d.simulated ? '[SIMULATO] ' : '') +
         'aggiornato ' + new Date(d.ts*1000).toLocaleTimeString() +
         ' · ' + d.samples_total + ' campioni totali';
     }

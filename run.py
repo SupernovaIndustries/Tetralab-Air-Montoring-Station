@@ -31,18 +31,30 @@ def setup_logging(level: str) -> None:
 
 
 def make_sensor(settings: Settings):
-    """Init SEN65; cade su simulatore se hardware non c'e' (utile per test su Mac)."""
-    try:
-        s = SEN65(bus=settings.i2c_bus, address=settings.sen65_address)
-        s.reset()
-        s.start_measurement()
-        logging.info("SEN65 inizializzato (serial=%s)", s.read_serial_number())
-        return s
-    except (SensorError, OSError, FileNotFoundError) as e:
-        if settings.allow_simulator:
-            logging.warning("SEN65 non disponibile (%s) — uso SimulatedSensor", e)
-            return SimulatedSensor()
-        raise
+    """Init SEN65 con retry. Se allow_simulator e' True (default: False) e
+    l'hardware non c'e', cade sul simulatore. Altrimenti riprova con backoff."""
+    log = logging.getLogger("sensor.init")
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            s = SEN65(bus=settings.i2c_bus, address=settings.sen65_address)
+            s.reset()
+            s.start_measurement()
+            log.info("SEN65 inizializzato al tentativo %d (serial=%s)",
+                     attempt, s.read_serial_number())
+            return s
+        except (SensorError, OSError, FileNotFoundError) as e:
+            if settings.allow_simulator:
+                log.warning("SEN65 non disponibile (%s) — uso SimulatedSensor "
+                            "(TETRALAB_ALLOW_SIMULATOR=1)", e)
+                return SimulatedSensor()
+            # backoff: 2s, 4s, 8s, ..., max 30s
+            delay = min(2 ** attempt, 30)
+            log.error("SEN65 init fallito al tentativo %d: %s "
+                      "— ritento tra %ds", attempt, e, delay)
+            import time
+            time.sleep(delay)
 
 
 def main() -> int:

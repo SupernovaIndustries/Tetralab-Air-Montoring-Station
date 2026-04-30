@@ -81,6 +81,9 @@ class SEN65:
         except Exception:
             pass
 
+    def is_simulated(self) -> bool:
+        return False
+
     # ----- I/O low-level -----
     def _write_cmd(self, cmd: int, args: bytes = b"") -> None:
         payload = struct.pack(">H", cmd) + args
@@ -175,6 +178,7 @@ class SimulatedSensor:
     def stop_measurement(self) -> None: pass
     def close(self) -> None: pass
     def is_data_ready(self) -> bool: return True
+    def is_simulated(self) -> bool: return True
 
     def read_serial_number(self) -> str:
         return "SIMULATED-0000000000000000"

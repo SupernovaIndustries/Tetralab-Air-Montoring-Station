@@ -99,9 +99,15 @@ class Aggregator:
             r = self._last_reading
             ts = self._last_reading_ts
             n = self._sample_count
+        simulated = False
+        try:
+            simulated = bool(self.sensor.is_simulated())
+        except AttributeError:
+            pass
         return {
             "ts": ts,
             "samples_total": n,
+            "simulated": simulated,
             "values": r.as_dict() if r else {m: None for m in METRICS},
         }
 

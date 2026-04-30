@@ -79,14 +79,25 @@ fi
 REBOOT_NEEDED=0
 if [[ -n "${CONFIG_TXT}" ]]; then
   info "Configuro ${CONFIG_TXT}..."
-  # I2C4 hardware su GPIO 8/9
-  if ! grep -qE "^[[:space:]]*dtoverlay=i2c4,pins_8_9" "${CONFIG_TXT}"; then
-    echo 'dtoverlay=i2c4,pins_8_9' >> "${CONFIG_TXT}"
-    info "  aggiunto: dtoverlay=i2c4,pins_8_9"
+
+  # Rimuovi versione legacy hardware (se presente) — siamo passati a i2c-gpio
+  if grep -qE "^[[:space:]]*dtoverlay=i2c4,pins_8_9" "${CONFIG_TXT}"; then
+    sed -i '/^[[:space:]]*dtoverlay=i2c4,pins_8_9/d' "${CONFIG_TXT}"
+    info "  rimosso vecchio overlay 'i2c4,pins_8_9'"
+    REBOOT_NEEDED=1
+  fi
+
+  # I2C software (i2c-gpio) su GPIO 8/9, esposto come /dev/i2c-4
+  # Universale (funziona su tutti i Pi), ~100 kHz default — ok per SEN65.
+  I2C_LINE='dtoverlay=i2c-gpio,bus=4,i2c_gpio_sda=8,i2c_gpio_scl=9'
+  if ! grep -qFx "${I2C_LINE}" "${CONFIG_TXT}"; then
+    echo "${I2C_LINE}" >> "${CONFIG_TXT}"
+    info "  aggiunto: ${I2C_LINE}"
     REBOOT_NEEDED=1
   else
-    info "  dtoverlay i2c4 gia' presente"
+    info "  dtoverlay i2c-gpio (bus 4 su GPIO 8/9) gia' presente"
   fi
+
   # GPIO 27 = output LOW al boot (SEL del SEN65 -> modalita' I2C)
   if ! grep -qE "^[[:space:]]*gpio=27=op,dl" "${CONFIG_TXT}"; then
     echo 'gpio=27=op,dl' >> "${CONFIG_TXT}"
@@ -97,7 +108,7 @@ if [[ -n "${CONFIG_TXT}" ]]; then
   fi
 else
   warn "config.txt non trovato in /boot o /boot/firmware — applica manualmente:"
-  warn "  dtoverlay=i2c4,pins_8_9"
+  warn "  dtoverlay=i2c-gpio,bus=4,i2c_gpio_sda=8,i2c_gpio_scl=9"
   warn "  gpio=27=op,dl"
 fi
 
@@ -212,10 +223,10 @@ ExecStart=${VENV_DIR}/bin/python ${PROJECT_DIR}/run.py
 Restart=on-failure
 RestartSec=5
 
-# hardening soft
+# hardening soft (ProtectHome=read-only perche' il progetto sta in /home/<user>)
 NoNewPrivileges=true
 ProtectSystem=full
-ProtectHome=true
+ProtectHome=read-only
 ReadWritePaths=${DATA_DIR}
 
 [Install]

@@ -53,7 +53,8 @@ class Settings:
 
     # --- Misc ---
     log_level: str = "INFO"
-    allow_simulator: bool = True   # se True, usa fake sensor se SEN65 manca
+    allow_simulator: bool = False  # default: NO simulatore. Su Pi vogliamo dati veri.
+                                   # Per dev su Mac: TETRALAB_ALLOW_SIMULATOR=1
 
     @classmethod
     def load(cls) -> "Settings":
@@ -61,7 +62,7 @@ class Settings:
             i2c_bus=_env_int("TETRALAB_I2C_BUS", 1),
             web_port=_env_int("TETRALAB_PORT", 5000),
             log_level=os.environ.get("TETRALAB_LOG_LEVEL", "INFO"),
-            allow_simulator=_env_bool("TETRALAB_ALLOW_SIMULATOR", True),
+            allow_simulator=_env_bool("TETRALAB_ALLOW_SIMULATOR", False),
             timezone_name=os.environ.get("TETRALAB_TZ", "Europe/Rome"),
         )
         if env_dir := os.environ.get("TETRALAB_DATA_DIR"):
