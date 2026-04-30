@@ -48,16 +48,128 @@ Tutti i parametri principali via **variabili d'ambiente** (settate in `tetralab.
 | `TETRALAB_I2C_BUS`  | `4` (impostato dal service) | bus I2C: `4` con i2c4 hardware su GPIO 8/9 |
 | `TETRALAB_LOG_LEVEL`| `INFO` | DEBUG/INFO/WARNING |
 | `TETRALAB_ALLOW_SIMULATOR` | `1` | se 1, usa fake sensor se SEN65 manca |
+| `TETRALAB_AP_SSID`  | `TetraLab-AQ` | SSID dell'access point integrato |
+| `TETRALAB_AP_PASS`  | `tetralab2026` | password AP (min 8 char, **da cambiare!**) |
+| `TETRALAB_AP_IP`    | `192.168.50.1/24` | IP/subnet dell'AP |
+| `TETRALAB_WIFI_IFACE` | `wlan0` | interfaccia WiFi |
 
 Per modificarle: `sudo systemctl edit tetralab.service` e aggiungi un drop-in `[Service]` con `Environment=...`, poi `sudo systemctl restart tetralab`.
 
-## Primo accesso
+## ✅ Checklist verifica post-setup (da fare in quest'ordine)
 
-1. Da un PC sulla stessa rete WiFi della Raspberry, apri il browser su `http://<ip-raspberry>:5000/`
-2. Vieni reindirizzato a **/setup_2fa**: scansiona il QR con **Google/Microsoft Authenticator**
-3. **📸 Fai screenshot del QR** se vuoi importarlo per altri dipendenti
-4. Inserisci il codice a 6 cifre per confermare → entri in dashboard
-5. Da qui vedi:
+Se hai appena lanciato `sudo ./setup.sh` (o vuoi capire perché qualcosa non va), esegui in sequenza:
+
+### 1. Il servizio è attivo?
+```bash
+sudo systemctl status tetralab
+```
+Cerca **`Active: active (running)`** verde. Se è `failed` → guarda subito i log:
+```bash
+sudo journalctl -u tetralab -n 100 --no-pager
+```
+Errori tipici:
+- `ModuleNotFoundError: No module named 'flask'` → venv non installato, rilancia `sudo ./setup.sh`
+- `PermissionError: /var/lib/tetralab/...` → owner sbagliato: `sudo chown -R $USER:$USER /var/lib/tetralab`
+- `OSError: [Errno 19] No such device` (su I2C) → `/dev/i2c-4` non esiste, manca dtoverlay → reboot dopo aver verificato config.txt
+
+### 2. La webapp ascolta sulla porta 5000?
+```bash
+sudo ss -ltnp | grep :5000
+```
+Devi vedere qualcosa tipo `LISTEN 0 ... *:5000 ... users:(("python",pid=...))`.
+Se non c'è nulla → servizio non davvero up, torna al punto 1.
+
+### 3. Curl in locale dalla Pi
+```bash
+curl -v http://127.0.0.1:5000/
+```
+Risposta attesa: HTTP 302 redirect a `/setup_2fa` o `/login`. Se anche da localhost non risponde, il problema è 100% sul servizio (non rete/firewall).
+
+### 4. IP della Pi
+```bash
+hostname -I
+ip -br addr
+```
+Il primo IP è quello LAN. Verifica che sia raggiungibile dal tuo PC:
+```bash
+# dal PC/Mac:
+ping <ip-pi>
+```
+
+### 5. Firewall
+Su Raspberry OS di default **non c'è firewall attivo**. Ma se hai installato `ufw`:
+```bash
+sudo ufw status
+sudo ufw allow 5000/tcp     # se serve
+```
+
+### 6. Bus I2C visto?
+```bash
+ls -l /dev/i2c-*            # deve esistere /dev/i2c-4
+i2cdetect -y 4              # deve apparire 0x6b (= SEN65)
+```
+Se `/dev/i2c-4` manca:
+```bash
+# verifica che config.txt abbia gli overlay
+grep -E "i2c4|gpio=27" /boot/firmware/config.txt /boot/config.txt 2>/dev/null
+sudo reboot                  # se hai appena modificato config.txt
+```
+
+### 7. AP visibile dal telefono?
+```bash
+nmcli con show --active     # deve esserci 'TetraLab-AP' in lista
+iw dev wlan0 info           # type AP confermato
+```
+Se manca, **rilancia `sudo ./setup.sh`** (è idempotente — non rovina nulla, riapplica solo le parti mancanti, inclusa la configurazione AP).
+
+## ⚠️ Problemi tipici "non riesco ad aprire http://&lt;ip&gt;:5000"
+
+| Sintomo | Causa probabile | Fix |
+|---|---|---|
+| Browser dice "Connessione rifiutata" | servizio non in ascolto | `sudo systemctl restart tetralab`, poi punto 2 e 3 sopra |
+| Browser dice "Timeout" | IP sbagliato o non raggiungibile | `ping <ip>` dal PC; rifai `hostname -I` sulla Pi |
+| Curl da Pi `127.0.0.1:5000` ok ma da PC no | problema rete o firewall | sei sulla stessa rete? Controlla `ufw`, controlla che il router non isoli i client |
+| Pagina si apre poi 500 | crash a runtime, vedi log | `sudo journalctl -u tetralab -n 200` |
+| `/dev/i2c-4` non esiste | dtoverlay non applicato | controlla config.txt, **reboot** |
+
+## Accesso alla webapp
+
+La centralina ha **due modi di accesso simultanei**:
+
+### 🌐 Via WiFi locale (STA)
+Se la Raspberry è connessa al WiFi della tua rete:
+```
+http://<ip-raspberry>:5000/
+http://raspberrypi.local:5000/   (se mDNS funziona)
+```
+
+### 📡 Via Access Point integrato
+La centralina **emette sempre** una propria rete WiFi alla quale connettersi direttamente — utile in postazioni remote senza WiFi (es. Bologna).
+
+| Parametro | Default | Override |
+|---|---|---|
+| SSID | `TetraLab-AQ` | `TETRALAB_AP_SSID` env nel setup.sh |
+| Password | `tetralab2026` | `TETRALAB_AP_PASS` env nel setup.sh |
+| IP webapp | `192.168.50.1:5000` | `TETRALAB_AP_IP` env (CIDR, es. `10.0.0.1/24`) |
+
+Il telefono/PC connesso all'AP riceve un IP automatico via DHCP (192.168.50.0/24) e vede la webapp su `http://192.168.50.1:5000/`.
+
+> **Cambia la password di default** prima di mettere in produzione! Ricrea il profilo con:
+> ```bash
+> sudo nmcli con modify TetraLab-AP wifi-sec.psk "nuova-password-min-8-char"
+> sudo nmcli con down TetraLab-AP && sudo nmcli con up TetraLab-AP
+> ```
+
+> AP+STA simultaneo sulla Pi 4/5 onboard (CYW43xxx) funziona, ma **vincolato allo stesso canale** della STA. Se hai problemi di range/stabilità, puoi disconnettere la STA e usare solo l'AP.
+
+## Primo accesso (provisioning 2FA)
+
+1. Connettiti via uno dei due modi sopra (rete locale o AP)
+2. Apri il browser sull'IP della webapp
+3. Vieni reindirizzato a **/setup_2fa**: scansiona il QR con **Google/Microsoft Authenticator**
+4. **📸 Fai screenshot del QR** se vuoi importarlo per altri dipendenti
+5. Inserisci il codice a 6 cifre per confermare → entri in dashboard
+6. Da qui vedi:
    - **Live**: dati in tempo reale (aggiornamento 2 s)
    - **Grafici**: PM, T/RH, VOC, NOx con livelli minuto/ora/12h/giorno e range selezionabile
    - **Export**: scarica `.xlsx` con tutte le tabelle + grafici Chart.js orari embedded
@@ -121,6 +233,17 @@ sudo systemctl disable tetralab
 sudo systemctl stop tetralab
 sudo rm -rf /var/lib/tetralab
 sudo systemctl start tetralab     # rigenera tutto al primo avvio
+
+# --- Access Point ---
+nmcli con show TetraLab-AP                # parametri profilo
+sudo nmcli con up TetraLab-AP             # avvia AP
+sudo nmcli con down TetraLab-AP           # spegne AP
+sudo nmcli con modify TetraLab-AP wifi-sec.psk "nuova-pwd"  # cambia pwd
+sudo nmcli con delete TetraLab-AP         # rimuovi del tutto
+
+# --- Connessione a una rete WiFi (STA) ---
+sudo nmcli device wifi list
+sudo nmcli device wifi connect "<SSID>" password "<password>"
 ```
 
 ## Troubleshooting
@@ -134,6 +257,9 @@ sudo systemctl start tetralab     # rigenera tutto al primo avvio
 | Codice TOTP sbagliato | controlla orario Raspberry: `timedatectl`, dovrebbe essere sincronizzato via NTP |
 | Errore TOTP dopo molti gg | drift orologio: `sudo systemctl restart systemd-timesyncd` |
 | Excel export vuoto | servono almeno 1 minuto di acquisizione (~60 letture) per popolare il primo bucket |
+| AP non visibile | `nmcli con show --active` per vedere se TetraLab-AP è up; se no `sudo nmcli con up TetraLab-AP`; verifica `iw dev wlan0 info` |
+| AP+STA non funzionano insieme | il chip onboard forza stesso canale: la STA prevale, l'AP si sposta. Su WiFi USB esterno → niente vincolo |
+| Niente DHCP sull'AP | NetworkManager con `ipv4.method shared` richiede `nftables`/`iptables` ok; controlla `sudo nft list ruleset` |
 
 ## Sviluppo locale (Mac/Linux senza hardware)
 

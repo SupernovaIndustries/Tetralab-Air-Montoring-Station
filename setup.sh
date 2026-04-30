@@ -21,6 +21,12 @@ SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
 PORT="${TETRALAB_PORT:-5000}"
 TZ_NAME="${TETRALAB_TZ:-Europe/Rome}"
 
+# Access Point WiFi (sempre attivo + STA contemporaneo se disponibile)
+AP_SSID="${TETRALAB_AP_SSID:-TetraLab-AQ}"
+AP_PASS="${TETRALAB_AP_PASS:-tetralab2026}"
+AP_IP_CIDR="${TETRALAB_AP_IP:-192.168.50.1/24}"
+WIFI_IFACE="${TETRALAB_WIFI_IFACE:-wlan0}"
+
 # ---- Helpers --------------------------------------------------------------
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[+]${NC} $*"; }
@@ -42,6 +48,8 @@ info "Cartella progetto:                 ${PROJECT_DIR}"
 info "Cartella dati persistenti:         ${DATA_DIR}"
 info "Porta web:                          ${PORT}"
 info "Timezone aggregazioni:              ${TZ_NAME}"
+info "Access Point SSID:                  ${AP_SSID}"
+info "Access Point IP:                    ${AP_IP_CIDR}"
 
 # ---- 1) Pacchetti di sistema ---------------------------------------------
 info "Aggiorno apt e installo dipendenze di sistema..."
@@ -139,7 +147,40 @@ else
   warn "i2cdetect non disponibile — salto"
 fi
 
-# ---- 6) systemd unit ------------------------------------------------------
+# ---- 6) Access Point WiFi (sempre attivo, coesiste con STA) ---------------
+# La Pi 4/5 onboard CYW43xxx supporta AP+STA simultaneo (vincolo: stesso canale).
+# Se NetworkManager non c'e' (raro su Bookworm) si salta — fai a mano con hostapd.
+if command -v nmcli >/dev/null 2>&1; then
+  info "Configuro Access Point WiFi via NetworkManager..."
+  if nmcli -t -f NAME connection show | grep -qx "TetraLab-AP"; then
+    info "  profilo 'TetraLab-AP' gia' presente, aggiorno parametri"
+  else
+    nmcli con add type wifi ifname "${WIFI_IFACE}" mode ap \
+      con-name TetraLab-AP ssid "${AP_SSID}" \
+      || warn "creazione profilo AP fallita"
+  fi
+  nmcli con modify TetraLab-AP \
+    802-11-wireless.band bg \
+    802-11-wireless.channel 6 \
+    802-11-wireless-security.key-mgmt wpa-psk \
+    802-11-wireless-security.psk "${AP_PASS}" \
+    ipv4.method shared \
+    ipv4.addresses "${AP_IP_CIDR}" \
+    connection.autoconnect yes \
+    connection.autoconnect-priority 50 \
+    || warn "modifica profilo AP fallita"
+
+  info "Avvio AP..."
+  nmcli con up TetraLab-AP || warn "non riesco ad avviare l'AP ora (riprovera' al reboot)"
+
+  AP_IP_BARE="${AP_IP_CIDR%/*}"
+  info "  AP attivo: SSID='${AP_SSID}'  pass='${AP_PASS}'  IP=${AP_IP_BARE}"
+else
+  warn "nmcli non disponibile — Access Point NON configurato."
+  warn "Installa NetworkManager o configura hostapd manualmente."
+fi
+
+# ---- 7) systemd unit ------------------------------------------------------
 info "Scrivo unit systemd in ${SERVICE_PATH}..."
 cat > "${SERVICE_PATH}" <<EOF
 [Unit]
@@ -178,14 +219,24 @@ systemctl restart "${SERVICE_NAME}"
 sleep 2
 systemctl --no-pager --lines=20 status "${SERVICE_NAME}" || true
 
-IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+IP_LAN="$(hostname -I 2>/dev/null | awk '{print $1}')"
+AP_IP_BARE="${AP_IP_CIDR%/*}"
 echo
 info "Setup completato."
 echo
-echo "  Webapp:    http://${IP:-<ip-raspberry>}:${PORT}/"
+echo "  ── Connessione via rete WiFi locale (STA): ──────────────────────"
+echo "  Webapp:    http://${IP_LAN:-<ip-raspberry>}:${PORT}/"
 echo "  Hostname:  http://$(hostname).local:${PORT}/"
+echo
+echo "  ── Connessione via Access Point della centralina: ───────────────"
+echo "  WiFi SSID: ${AP_SSID}"
+echo "  Password:  ${AP_PASS}"
+echo "  Webapp:    http://${AP_IP_BARE}:${PORT}/"
+echo
+echo "  ── Manutenzione: ────────────────────────────────────────────────"
 echo "  Logs:      sudo journalctl -u ${SERVICE_NAME} -f"
 echo "  Service:   sudo systemctl {status|restart|stop} ${SERVICE_NAME}"
+echo "  AP:        sudo nmcli con {up|down} TetraLab-AP"
 echo "  Data dir:  ${DATA_DIR}"
 echo
 if [[ "${REBOOT_NEEDED}" == "1" ]]; then
