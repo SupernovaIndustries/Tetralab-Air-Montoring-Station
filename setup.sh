@@ -52,21 +52,32 @@ info "Access Point SSID:                  ${AP_SSID}"
 info "Access Point IP:                    ${AP_IP_CIDR}"
 
 # ---- 1) Pacchetti di sistema ---------------------------------------------
-info "Aggiorno apt e installo dipendenze di sistema..."
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get install -y \
-  python3 python3-venv python3-dev python3-pip \
-  build-essential libffi-dev libssl-dev \
-  i2c-tools sqlite3 git tzdata
+APT_PKGS=(python3 python3-venv python3-dev python3-pip
+          build-essential libffi-dev libssl-dev
+          i2c-tools sqlite3 git tzdata)
+APT_MISSING=()
+for pkg in "${APT_PKGS[@]}"; do
+  if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+    APT_MISSING+=("$pkg")
+  fi
+done
+if [[ ${#APT_MISSING[@]} -eq 0 ]]; then
+  info "Pacchetti di sistema gia' installati — skip apt"
+else
+  info "Mancano ${#APT_MISSING[@]} pacchetti: ${APT_MISSING[*]}"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y "${APT_MISSING[@]}"
+fi
 
-# ---- 2) Abilita I2C su Raspberry ------------------------------------------
-# Cablaggio SEN65 sul connettore custom:
-#   SDA  -> GPIO 8   (i2c4)
-#   SCL  -> GPIO 9   (i2c4)
-#   SEL  -> GPIO 27  (output LOW al boot, modalita' I2C del SEN65)
-#   VDD  -> 3V3, GND -> GND
-# Bus risultante: /dev/i2c-4
+# ---- 2) Abilita I2C-1 standard su Raspberry -------------------------------
+# Cablaggio SEN65 sul header 40-pin Pi:
+#   VDD  -> Pin 1   (3V3)
+#   GND  -> Pin 6   (GND)
+#   SDA  -> Pin 3   (GPIO 2 / SDA1)  ← pullup hardware 1.8k integrato sul PCB
+#   SCL  -> Pin 5   (GPIO 3 / SCL1)  ← pullup hardware 1.8k integrato sul PCB
+#   SEL  -> Pin 9   (GND, qualsiasi GND ok — modalita' I2C del SEN65)
+# Bus risultante: /dev/i2c-1
 
 # Trova config.txt giusto (Bookworm = /boot/firmware/config.txt, Bullseye = /boot/config.txt)
 CONFIG_TXT=""
@@ -80,49 +91,24 @@ REBOOT_NEEDED=0
 if [[ -n "${CONFIG_TXT}" ]]; then
   info "Configuro ${CONFIG_TXT}..."
 
-  # Rimuovi versione legacy hardware (se presente) — siamo passati a i2c-gpio
-  if grep -qE "^[[:space:]]*dtoverlay=i2c4,pins_8_9" "${CONFIG_TXT}"; then
-    sed -i '/^[[:space:]]*dtoverlay=i2c4,pins_8_9/d' "${CONFIG_TXT}"
-    info "  rimosso vecchio overlay 'i2c4,pins_8_9'"
-    REBOOT_NEEDED=1
-  fi
-
-  # I2C software (i2c-gpio) su GPIO 8/9, esposto come /dev/i2c-4
-  # Universale (funziona su tutti i Pi), ~100 kHz default — ok per SEN65.
-  I2C_LINE='dtoverlay=i2c-gpio,bus=4,i2c_gpio_sda=8,i2c_gpio_scl=9'
-  if ! grep -qFx "${I2C_LINE}" "${CONFIG_TXT}"; then
-    echo "${I2C_LINE}" >> "${CONFIG_TXT}"
-    info "  aggiunto: ${I2C_LINE}"
-    REBOOT_NEEDED=1
-  else
-    info "  dtoverlay i2c-gpio (bus 4 su GPIO 8/9) gia' presente"
-  fi
-
-  # GPIO 27 = output LOW al boot (SEL del SEN65 -> modalita' I2C)
-  if ! grep -qE "^[[:space:]]*gpio=27=op,dl" "${CONFIG_TXT}"; then
-    echo 'gpio=27=op,dl' >> "${CONFIG_TXT}"
-    info "  aggiunto: gpio=27=op,dl  (SEL=LOW per modalita' I2C del SEN65)"
-    REBOOT_NEEDED=1
-  else
-    info "  gpio=27=op,dl gia' presente"
-  fi
-
-  # Pull-up interni su GPIO 8/9 (~50kOhm). Il default su Pi e':
-  #   GPIO 8 = pull-up debole (ok)
-  #   GPIO 9 = pull-DOWN (opposto di quello che serve a I2C!)
-  # Lo forziamo esplicitamente. NB: idealmente metti anche 10k esterni a 3V3
-  # come raccomanda il datasheet SEN65.
-  if ! grep -qE "^[[:space:]]*gpio=8,9=ip,pu" "${CONFIG_TXT}"; then
-    echo 'gpio=8,9=ip,pu' >> "${CONFIG_TXT}"
-    info "  aggiunto: gpio=8,9=ip,pu  (pull-up interni I2C, ~50kOhm)"
-    REBOOT_NEEDED=1
-  else
-    info "  gpio=8,9=ip,pu gia' presente"
-  fi
+  # Cleanup: rimuovi overlay/gpio custom delle iterazioni precedenti.
+  # Ora usiamo I2C-1 standard (GPIO 2/3) che ha i pullup hardware sul PCB Pi
+  # e SEL del SEN65 cablato direttamente a GND (no GPIO 27).
+  for PATTERN in \
+    "^[[:space:]]*dtoverlay=i2c4,pins_8_9" \
+    "^[[:space:]]*dtoverlay=i2c-gpio,bus=4" \
+    "^[[:space:]]*gpio=27=op,dl" \
+    "^[[:space:]]*gpio=8,9=ip,pu"
+  do
+    if grep -qE "${PATTERN}" "${CONFIG_TXT}"; then
+      sed -i "/${PATTERN}/d" "${CONFIG_TXT}"
+      info "  rimosso (legacy): ${PATTERN}"
+      REBOOT_NEEDED=1
+    fi
+  done
+  info "  config.txt pulito — uso I2C-1 standard (GPIO 2/3) con pullup hardware Pi"
 else
-  warn "config.txt non trovato in /boot o /boot/firmware — applica manualmente:"
-  warn "  dtoverlay=i2c-gpio,bus=4,i2c_gpio_sda=8,i2c_gpio_scl=9"
-  warn "  gpio=27=op,dl"
+  warn "config.txt non trovato in /boot o /boot/firmware"
 fi
 
 # Abilita anche I2C-1 standard (per debug / future espansioni)
@@ -148,24 +134,28 @@ chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}"
 chmod 750 "${DATA_DIR}"
 
 # ---- 4) Virtualenv + requirements -----------------------------------------
-info "Creo virtualenv in ${VENV_DIR}..."
-sudo -u "${APP_USER}" python3 -m venv "${VENV_DIR}"
-sudo -u "${APP_USER}" "${VENV_DIR}/bin/pip" install --upgrade pip wheel
-info "Installo requirements Python..."
-sudo -u "${APP_USER}" "${VENV_DIR}/bin/pip" install -r "${PROJECT_DIR}/requirements.txt"
+if [[ -x "${VENV_DIR}/bin/python" ]]; then
+  info "Virtualenv gia' presente in ${VENV_DIR}"
+else
+  info "Creo virtualenv in ${VENV_DIR}..."
+  sudo -u "${APP_USER}" python3 -m venv "${VENV_DIR}"
+  sudo -u "${APP_USER}" "${VENV_DIR}/bin/pip" install --upgrade pip wheel
+fi
+# Installa requirements solo se mancano (controlla flask come canary)
+if sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" -c "import flask, smbus2, pyotp, qrcode, openpyxl, pytz" 2>/dev/null; then
+  info "Requirements Python gia' installati — skip pip"
+else
+  info "Installo requirements Python..."
+  sudo -u "${APP_USER}" "${VENV_DIR}/bin/pip" install -r "${PROJECT_DIR}/requirements.txt"
+fi
 
 # ---- 5) Test rapido sensore (non blocca se fallisce) ----------------------
-info "Provo a leggere i bus I2C..."
+info "Provo a leggere il bus I2C-1 (atteso: 0x6b per SEN65)..."
 if command -v i2cdetect >/dev/null 2>&1; then
-  if [[ -e /dev/i2c-4 ]]; then
-    info "scan /dev/i2c-4 (atteso: 0x6b per SEN65):"
-    i2cdetect -y 4 || warn "i2cdetect su bus 4 ha riportato un errore"
-  else
-    warn "/dev/i2c-4 non esiste ancora — sara' disponibile dopo il reboot"
-  fi
   if [[ -e /dev/i2c-1 ]]; then
-    info "scan /dev/i2c-1:"
-    i2cdetect -y 1 || true
+    i2cdetect -y 1 || warn "i2cdetect su bus 1 ha riportato un errore"
+  else
+    warn "/dev/i2c-1 non esiste ancora — abilitalo con 'sudo raspi-config nonint do_i2c 0' + reboot"
   fi
 else
   warn "i2cdetect non disponibile — salto"
@@ -230,7 +220,7 @@ WorkingDirectory=${PROJECT_DIR}
 Environment=TETRALAB_DATA_DIR=${DATA_DIR}
 Environment=TETRALAB_PORT=${PORT}
 Environment=TETRALAB_TZ=${TZ_NAME}
-Environment=TETRALAB_I2C_BUS=4
+Environment=TETRALAB_I2C_BUS=1
 Environment=PYTHONUNBUFFERED=1
 ExecStart=${VENV_DIR}/bin/python ${PROJECT_DIR}/run.py
 Restart=on-failure
@@ -277,8 +267,7 @@ echo "  Data dir:  ${DATA_DIR}"
 echo
 if [[ "${REBOOT_NEEDED}" == "1" ]]; then
   warn "================================================================"
-  warn " REBOOT NECESSARIO: ho modificato config.txt (i2c4 + gpio27)."
-  warn " Il SEN65 NON sara' raggiungibile finche' non riavvii."
+  warn " REBOOT consigliato: ho rimosso overlay legacy da config.txt."
   warn " Esegui:  sudo reboot"
   warn "================================================================"
 fi

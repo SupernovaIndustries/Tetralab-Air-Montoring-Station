@@ -4,14 +4,12 @@ Datalogger qualità aria con **Sensirion SEN65** su **Raspberry Pi**, webapp Fla
 
 ## Hardware previsto
 - Raspberry Pi 4/5 (o CM4) con scheda custom
-- Sensirion **SEN65** via connettore custom su:
-  - SDA → **GPIO 8**  (bus I2C software via `dtoverlay=i2c-gpio,bus=4,i2c_gpio_sda=8,i2c_gpio_scl=9`)
-  - SCL → **GPIO 9**
-  - SEL → **GPIO 27** (output LOW al boot, modalità I2C del SEN65)
-  - VDD → 3V3, GND → GND
-  - **Pull-up esterni 10kΩ** su SDA e SCL a 3V3 (raccomandato dal datasheet SEN65)
-    - I pull-up interni della Pi (~50kΩ) sono attivati via `gpio=8,9=ip,pu` come safety-net,
-      ma con cavi >10cm o disturbi elettrici servono quelli esterni
+- Sensirion **SEN65** sui pin **I2C-1 standard** della Pi (hanno **pull-up hardware 1.8kΩ saldati sul PCB della Pi**, niente componenti esterni):
+  - VDD → **Pin 1** (3V3)
+  - GND → **Pin 6** (GND)
+  - SDA → **Pin 3** (GPIO 2 / SDA1)
+  - SCL → **Pin 5** (GPIO 3 / SCL1)
+  - SEL → **Pin 9** (GND, qualsiasi GND va bene — modalità I2C del SEN65)
 - Storage: **128 GB onboard** della scheda custom
 - Cellular SIMCOM 7600G — *integrazione prevista in seconda fase (UART su PCIe)*
 
@@ -25,8 +23,8 @@ sudo ./setup.sh
 
 Lo script:
 1. Aggiorna apt + installa python3, venv, build tools, `i2c-tools`, `sqlite3`
-2. Configura `config.txt` con `dtoverlay=i2c-gpio,bus=4,...` + `gpio=27=op,dl` (SEL→LOW)
-3. Abilita anche I2C-1 standard (per debug/futuro)
+2. Pulisce eventuali overlay legacy da config.txt (i2c-gpio, gpio27, ecc) di iterazioni precedenti
+3. Abilita I2C-1 standard via `raspi-config`
 4. Aggiunge l'utente al gruppo `i2c`
 5. Crea `/var/lib/tetralab` per i dati persistenti
 6. Crea venv in `.venv/` e installa `requirements.txt`
@@ -48,7 +46,7 @@ Tutti i parametri principali via **variabili d'ambiente** (settate in `tetralab.
 | `TETRALAB_DATA_DIR` | `/var/lib/tetralab` | dove finiscono DB + secrets |
 | `TETRALAB_PORT`     | `5000` | porta webapp |
 | `TETRALAB_TZ`       | `Europe/Rome` | timezone per allineare aggregazioni |
-| `TETRALAB_I2C_BUS`  | `4` (impostato dal service) | bus I2C: `4` con i2c4 hardware su GPIO 8/9 |
+| `TETRALAB_I2C_BUS`  | `1` (impostato dal service) | bus I2C: `/dev/i2c-1` (pin GPIO 2/3 standard) |
 | `TETRALAB_LOG_LEVEL`| `INFO` | DEBUG/INFO/WARNING |
 | `TETRALAB_ALLOW_SIMULATOR` | `0` (off) | se `1`, usa fake sensor se SEN65 manca (utile solo per dev su Mac) |
 | `TETRALAB_AP_SSID`  | `TetraLab-AQ` | SSID dell'access point integrato |
@@ -271,7 +269,7 @@ sudo journalctl -u tetralab -f
 sudo systemctl restart tetralab
 
 # controlla che il SEN65 risponda sul bus
-i2cdetect -y 4            # atteso: 0x6b (bus 4 = GPIO 8/9)
+i2cdetect -y 1            # atteso: 0x6b (bus 1 = GPIO 2/3)
 
 # stop / disable se serve
 sudo systemctl stop tetralab
@@ -298,9 +296,9 @@ sudo nmcli device wifi connect "<SSID>" password "<password>"
 
 | Problema | Soluzione |
 |---|---|
-| `i2cdetect -y 4` non vede 0x6B | verifica `/boot/firmware/config.txt` contiene `dtoverlay=i2c4,pins_8_9` e `gpio=27=op,dl`; reboot; misura GPIO 27 con multimetro (deve essere 0V); cablaggio VDD/GND/SDA/SCL |
-| `/dev/i2c-4` non esiste | dtoverlay non applicato → reboot dopo aver controllato config.txt |
-| `Permission denied: /dev/i2c-4` | utente non in gruppo `i2c` → `sudo usermod -aG i2c $USER` + reboot |
+| `i2cdetect -y 1` non vede 0x6B | verifica cablaggio VDD/GND/SDA/SCL, SEL→GND, pin 3 e 5 sul header Pi; reboot |
+| `/dev/i2c-1` non esiste | I2C non abilitato → `sudo raspi-config nonint do_i2c 0` + reboot |
+| `Permission denied: /dev/i2c-1` | utente non in gruppo `i2c` → `sudo usermod -aG i2c $USER` + reboot |
 | Webapp non raggiungibile | `sudo systemctl status tetralab`, `sudo ss -ltn` per vedere se 5000 è in ascolto |
 | Codice TOTP sbagliato | controlla orario Raspberry: `timedatectl`, dovrebbe essere sincronizzato via NTP |
 | Errore TOTP dopo molti gg | drift orologio: `sudo systemctl restart systemd-timesyncd` |
